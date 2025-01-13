@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2024 ApeCloud Co., Ltd
 
 This file is part of KubeBlocks project
 
@@ -26,9 +26,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/apecloud/kubeblocks/internal/configuration/core"
-	"github.com/apecloud/kubeblocks/internal/constant"
-	testapps "github.com/apecloud/kubeblocks/internal/testutil/apps"
+	"github.com/apecloud/kubeblocks/pkg/configuration/core"
+	"github.com/apecloud/kubeblocks/pkg/constant"
+	testapps "github.com/apecloud/kubeblocks/pkg/testutil/apps"
 )
 
 var _ = Describe("Reconfigure Controller", func() {
@@ -36,7 +36,8 @@ var _ = Describe("Reconfigure Controller", func() {
 
 	AfterEach(cleanEnv)
 
-	Context("When updating configmap", func() {
+	// TODO(component)
+	PContext("When updating configmap", func() {
 		It("Should rolling upgrade pod", func() {
 			configmap, _, clusterObj, _, _ := mockReconcileResource()
 

@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2024 ApeCloud Co., Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,10 @@ limitations under the License.
 
 package v1alpha1
 
+// ActionSetListerExpansion allows custom methods to be added to
+// ActionSetLister.
+type ActionSetListerExpansion interface{}
+
 // BackupListerExpansion allows custom methods to be added to
 // BackupLister.
 type BackupListerExpansion interface{}
@@ -34,18 +38,30 @@ type BackupPolicyListerExpansion interface{}
 // BackupPolicyNamespaceLister.
 type BackupPolicyNamespaceListerExpansion interface{}
 
+// BackupPolicyTemplateListerExpansion allows custom methods to be added to
+// BackupPolicyTemplateLister.
+type BackupPolicyTemplateListerExpansion interface{}
+
 // BackupRepoListerExpansion allows custom methods to be added to
 // BackupRepoLister.
 type BackupRepoListerExpansion interface{}
 
-// BackupToolListerExpansion allows custom methods to be added to
-// BackupToolLister.
-type BackupToolListerExpansion interface{}
+// BackupScheduleListerExpansion allows custom methods to be added to
+// BackupScheduleLister.
+type BackupScheduleListerExpansion interface{}
 
-// RestoreJobListerExpansion allows custom methods to be added to
-// RestoreJobLister.
-type RestoreJobListerExpansion interface{}
+// BackupScheduleNamespaceListerExpansion allows custom methods to be added to
+// BackupScheduleNamespaceLister.
+type BackupScheduleNamespaceListerExpansion interface{}
 
-// RestoreJobNamespaceListerExpansion allows custom methods to be added to
-// RestoreJobNamespaceLister.
-type RestoreJobNamespaceListerExpansion interface{}
+// RestoreListerExpansion allows custom methods to be added to
+// RestoreLister.
+type RestoreListerExpansion interface{}
+
+// RestoreNamespaceListerExpansion allows custom methods to be added to
+// RestoreNamespaceLister.
+type RestoreNamespaceListerExpansion interface{}
+
+// StorageProviderListerExpansion allows custom methods to be added to
+// StorageProviderLister.
+type StorageProviderListerExpansion interface{}

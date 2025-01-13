@@ -37,9 +37,12 @@ BackupRepo command.
 ### SEE ALSO
 
 
-* [kbcli backuprepo create](kbcli_backuprepo_create.md)	 - Create a backup repo
-* [kbcli backuprepo describe](kbcli_backuprepo_describe.md)	 - Describe a backuprepo.
-* [kbcli backuprepo list](kbcli_backuprepo_list.md)	 - List BackupRepo.
+* [kbcli backuprepo create](kbcli_backuprepo_create.md)	 - Create a backup repository
+* [kbcli backuprepo delete](kbcli_backuprepo_delete.md)	 - Delete a backup repository.
+* [kbcli backuprepo describe](kbcli_backuprepo_describe.md)	 - Describe a backup repository.
+* [kbcli backuprepo list](kbcli_backuprepo_list.md)	 - List Backup Repositories.
+* [kbcli backuprepo list-storage-provider](kbcli_backuprepo_list-storage-provider.md)	 - List storage providers.
+* [kbcli backuprepo update](kbcli_backuprepo_update.md)	 - Update a backup repository.
 
 #### Go Back to [CLI Overview](cli.md) Homepage.
 

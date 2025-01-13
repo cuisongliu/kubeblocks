@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2024 ApeCloud Co., Ltd
 
 This file is part of KubeBlocks project
 
@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	appsv1alpha1 "github.com/apecloud/kubeblocks/apis/apps/v1alpha1"
-	"github.com/apecloud/kubeblocks/internal/configuration/core"
+	"github.com/apecloud/kubeblocks/pkg/configuration/core"
 )
 
 type simplePolicy struct {
@@ -37,26 +37,7 @@ func init() {
 func (s *simplePolicy) Upgrade(params reconfigureParams) (ReturnedStatus, error) {
 	params.Ctx.Log.V(1).Info("simple policy begin....")
 
-	var funcs RollingUpgradeFuncs
-	var compLists []client.Object
-
-	switch params.WorkloadType() {
-	default:
-		return makeReturnedStatus(ESNotSupport), core.MakeError("not supported component workload type:[%s]", params.WorkloadType())
-	case appsv1alpha1.Consensus:
-		funcs = GetConsensusRollingUpgradeFuncs()
-		compLists = fromStatefulSetObjects(params.ComponentUnits)
-	case appsv1alpha1.Stateful:
-		funcs = GetStatefulSetRollingUpgradeFuncs()
-		compLists = fromStatefulSetObjects(params.ComponentUnits)
-	case appsv1alpha1.Replication:
-		funcs = GetReplicationRollingUpgradeFuncs()
-		compLists = fromStatefulSetObjects(params.ComponentUnits)
-	case appsv1alpha1.Stateless:
-		funcs = GetDeploymentRollingUpgradeFuncs()
-		compLists = fromDeploymentObjects(params.DeploymentUnits)
-	}
-	return restartAndCheckComponent(params, funcs, compLists)
+	return restartAndCheckComponent(params, GetInstanceSetRollingUpgradeFuncs(), fromWorkloadObjects(params))
 }
 
 func (s *simplePolicy) GetPolicyName() string {

@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2024 ApeCloud Co., Ltd
 
 This file is part of KubeBlocks project
 
@@ -23,49 +23,29 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sort"
+	"net/netip"
 	"strconv"
 
-	appv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/apecloud/kubeblocks/controllers/apps/components"
-	"github.com/apecloud/kubeblocks/internal/common"
-	"github.com/apecloud/kubeblocks/internal/configuration/core"
-	cfgproto "github.com/apecloud/kubeblocks/internal/configuration/proto"
-	"github.com/apecloud/kubeblocks/internal/constant"
-	"github.com/apecloud/kubeblocks/internal/controller/rsm"
-	intctrlutil "github.com/apecloud/kubeblocks/internal/controllerutil"
-	viper "github.com/apecloud/kubeblocks/internal/viperx"
+	workloads "github.com/apecloud/kubeblocks/apis/workloads/v1"
+	"github.com/apecloud/kubeblocks/pkg/configuration/core"
+	cfgproto "github.com/apecloud/kubeblocks/pkg/configuration/proto"
+	"github.com/apecloud/kubeblocks/pkg/constant"
+	"github.com/apecloud/kubeblocks/pkg/controller/component"
+	"github.com/apecloud/kubeblocks/pkg/controller/configuration"
+	"github.com/apecloud/kubeblocks/pkg/controller/instanceset"
+	intctrlutil "github.com/apecloud/kubeblocks/pkg/controllerutil"
+	"github.com/apecloud/kubeblocks/pkg/generics"
+	viper "github.com/apecloud/kubeblocks/pkg/viperx"
 )
-
-func getDeploymentRollingPods(params reconfigureParams) ([]corev1.Pod, error) {
-	// util.GetComponentPodList supports deployment
-	return getReplicationSetPods(params)
-}
-
-func getReplicationSetPods(params reconfigureParams) ([]corev1.Pod, error) {
-	var ctx = params.Ctx
-	var cluster = params.Cluster
-	podList, err := components.GetComponentPodList(ctx.Ctx, params.Client, *cluster, params.ClusterComponent.Name)
-	if err != nil {
-		return nil, err
-	}
-	return podList.Items, nil
-}
 
 // GetComponentPods gets all pods of the component.
 func GetComponentPods(params reconfigureParams) ([]corev1.Pod, error) {
 	componentPods := make([]corev1.Pod, 0)
-	for i := range params.ComponentUnits {
-		pods, err := common.GetPodListByStatefulSetWithSelector(params.Ctx.Ctx,
-			params.Client,
-			&params.ComponentUnits[i],
-			client.MatchingLabels{
-				constant.KBAppComponentLabelKey: params.ClusterComponent.Name,
-				constant.AppInstanceLabelKey:    params.Cluster.Name,
-			})
+	for i := range params.InstanceSetUnits {
+		pods, err := intctrlutil.GetPodListByInstanceSet(params.Ctx.Ctx, params.Client, &params.InstanceSetUnits[i])
 		if err != nil {
 			return nil, err
 		}
@@ -90,46 +70,22 @@ func CheckReconfigureUpdateProgress(pods []corev1.Pod, configKey, version string
 	return readyPods
 }
 
-func getStatefulSetPods(params reconfigureParams) ([]corev1.Pod, error) {
-	if len(params.ComponentUnits) != 1 {
-		return nil, core.MakeError("statefulSet component require only one statefulset, actual %d components", len(params.ComponentUnits))
+func getPodsForOnlineUpdate(params reconfigureParams) ([]corev1.Pod, error) {
+	if len(params.InstanceSetUnits) > 1 {
+		return nil, core.MakeError("component require only one InstanceSet, actual %d components", len(params.InstanceSetUnits))
 	}
 
-	pods, err := GetComponentPods(params)
-	if err != nil {
-		return nil, err
-	}
-
-	sort.SliceStable(pods, func(i, j int) bool {
-		_, ordinal1 := intctrlutil.GetParentNameAndOrdinal(&pods[i])
-		_, ordinal2 := intctrlutil.GetParentNameAndOrdinal(&pods[j])
-		return ordinal1 < ordinal2
-	})
-	return pods, nil
-}
-
-func getConsensusPods(params reconfigureParams) ([]corev1.Pod, error) {
-	if len(params.ComponentUnits) > 1 {
-		return nil, core.MakeError("consensus component require only one statefulset, actual %d components", len(params.ComponentUnits))
-	}
-
-	if len(params.ComponentUnits) == 0 {
+	if len(params.InstanceSetUnits) == 0 {
 		return nil, nil
 	}
 
 	pods, err := GetComponentPods(params)
-	// stsObj := &params.ComponentUnits[0]
-	// pods, err := components.GetPodListByStatefulSetWithSelector(params.Ctx.Ctx, params.Client, stsObj, client.MatchingLabels{
-	//	constant.KBAppComponentLabelKey: params.ClusterComponent.Name,
-	//	constant.AppInstanceLabelKey:    params.Cluster.Name,
-	// })
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: should resolve the dependency on consensus module
-	if params.Component.RSMSpec != nil {
-		rsm.SortPods(pods, rsm.ComposeRolePriorityMap(params.Component.RSMSpec.Roles), true)
+	if params.SynthesizedComponent != nil {
+		instanceset.SortPods(pods, instanceset.ComposeRolePriorityMap(component.ConvertSynthesizeCompRoleToInstanceSetRole(params.SynthesizedComponent)), true)
 	}
 	return pods, nil
 }
@@ -196,81 +152,82 @@ func commonStopContainerWithPod(pod *corev1.Pod, ctx context.Context, containerN
 
 func cfgManagerGrpcURL(pod *corev1.Pod) (string, error) {
 	podPort := viper.GetInt(constant.ConfigManagerGPRCPortEnv)
+	if pod.Spec.HostNetwork {
+		containerPort, err := configuration.GetConfigManagerGRPCPort(pod.Spec.Containers)
+		if err != nil {
+			return "", err
+		}
+		podPort = int(containerPort)
+	}
 	return getURLFromPod(pod, podPort)
 }
 
 func getURLFromPod(pod *corev1.Pod, portPort int) (string, error) {
-	ip := net.ParseIP(pod.Status.PodIP)
-	if ip == nil {
-		return "", core.MakeError("%s is not a valid IP", pod.Status.PodIP)
-	}
-
-	// Sanity check PodIP
-	if ip.To4() == nil && ip.To16() == nil {
-		return "", fmt.Errorf("%s is not a valid IPv4/IPv6 address", pod.Status.PodIP)
+	ip, err := ipAddressFromPod(pod.Status)
+	if err != nil {
+		return "", err
 	}
 	return net.JoinHostPort(ip.String(), strconv.Itoa(portPort)), nil
 }
 
-func restartStatelessComponent(cli client.Client, ctx intctrlutil.RequestCtx, configKey string, expectedVersion string, deployObjs []client.Object, recordEvent func(obj client.Object)) (client.Object, error) {
-	cfgAnnotationKey := core.GenerateUniqKeyWithConfig(constant.UpgradeRestartAnnotationKey, configKey)
-	deployRestart := func(deploy *appv1.Deployment, expectedVersion string) error {
-		patch := client.MergeFrom(deploy.DeepCopy())
-		if deploy.Spec.Template.Annotations == nil {
-			deploy.Spec.Template.Annotations = map[string]string{}
+func ipAddressFromPod(status corev1.PodStatus) (net.IP, error) {
+	// IPv4 address priority
+	for _, ip := range status.PodIPs {
+		address, err := netip.ParseAddr(ip.IP)
+		if err != nil || address.Is6() {
+			continue
 		}
-		deploy.Spec.Template.Annotations[cfgAnnotationKey] = expectedVersion
-		if err := cli.Patch(ctx.Ctx, deploy, patch); err != nil {
-			return err
-		}
-		return nil
+		return net.ParseIP(ip.IP), nil
 	}
 
-	for _, obj := range deployObjs {
-		deploy, ok := obj.(*appv1.Deployment)
-		if !ok {
-			continue
-		}
-		if updatedVersion(&deploy.Spec.Template, cfgAnnotationKey, expectedVersion) {
-			continue
-		}
-		if err := deployRestart(deploy, expectedVersion); err != nil {
-			return deploy, err
-		}
-		if recordEvent != nil {
-			recordEvent(deploy)
-		}
+	// Using status.PodIP
+	address := net.ParseIP(status.PodIP)
+	if !validIPv4Address(address) && !validIPv6Address(address) {
+		return nil, fmt.Errorf("%s is not a valid IPv4/IPv6 address", status.PodIP)
 	}
-	return nil, nil
+	return address, nil
 }
 
-func restartStatefulComponent(cli client.Client, ctx intctrlutil.RequestCtx, configKey string, newVersion string, objs []client.Object, recordEvent func(obj client.Object)) (client.Object, error) {
-	cfgAnnotationKey := core.GenerateUniqKeyWithConfig(constant.UpgradeRestartAnnotationKey, configKey)
-	stsRestart := func(sts *appv1.StatefulSet, expectedVersion string) error {
-		patch := client.MergeFrom(sts.DeepCopy())
-		if sts.Spec.Template.Annotations == nil {
-			sts.Spec.Template.Annotations = map[string]string{}
-		}
-		sts.Spec.Template.Annotations[cfgAnnotationKey] = expectedVersion
-		if err := cli.Patch(ctx.Ctx, sts, patch); err != nil {
-			return err
-		}
+func validIPv4Address(ip net.IP) bool {
+	return ip != nil && ip.To4() != nil
+}
+
+func validIPv6Address(ip net.IP) bool {
+	return ip != nil && ip.To16() != nil
+}
+
+func restartWorkloadComponent[T generics.Object, PT generics.PObject[T], L generics.ObjList[T], PL generics.PObjList[T, L]](cli client.Client, ctx context.Context, annotationKey, annotationValue string, obj PT, _ func(T, PT, L, PL)) error {
+	template := transformPodTemplate(obj)
+	if updatedVersion(template, annotationKey, annotationValue) {
 		return nil
 	}
 
+	patch := client.MergeFrom(PT(obj.DeepCopy()))
+	if template.Annotations == nil {
+		template.Annotations = map[string]string{}
+	}
+	template.Annotations[annotationKey] = annotationValue
+	if err := cli.Patch(ctx, obj, patch); err != nil {
+		return err
+	}
+	return nil
+}
+
+func restartComponent(cli client.Client, ctx intctrlutil.RequestCtx, configKey string, newVersion string, objs []client.Object, recordEvent func(obj client.Object)) (client.Object, error) {
+	var err error
+	cfgAnnotationKey := core.GenerateUniqKeyWithConfig(constant.UpgradeRestartAnnotationKey, configKey)
 	for _, obj := range objs {
-		sts, ok := obj.(*appv1.StatefulSet)
-		if !ok {
-			continue
+		switch w := obj.(type) {
+		case *workloads.InstanceSet:
+			err = restartWorkloadComponent(cli, ctx.Ctx, cfgAnnotationKey, newVersion, w, generics.InstanceSetSignature)
+		default:
+			// ignore other types workload
 		}
-		if updatedVersion(&sts.Spec.Template, cfgAnnotationKey, newVersion) {
-			continue
-		}
-		if err := stsRestart(sts, newVersion); err != nil {
-			return sts, err
+		if err != nil {
+			return obj, err
 		}
 		if recordEvent != nil {
-			recordEvent(sts)
+			recordEvent(obj)
 		}
 	}
 	return nil, nil

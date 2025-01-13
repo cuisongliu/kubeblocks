@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2024 ApeCloud Co., Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,175 +17,392 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"fmt"
-	"sort"
-
-	"golang.org/x/exp/slices"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // BackupSpec defines the desired state of Backup.
+// +kubebuilder:validation:XValidation:rule="has(oldSelf.parameters) == has(self.parameters)",message="forbidden to update spec.parameters"
 type BackupSpec struct {
-	// Which backupPolicy is applied to perform this backup
+	// Specifies the backup policy to be applied for this backup.
+	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern:=`^[a-z0-9]([a-z0-9\.\-]*[a-z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="forbidden to update spec.backupPolicyName"
 	BackupPolicyName string `json:"backupPolicyName"`
 
-	// Backup Type. datafile or logfile or snapshot. If not set, datafile is the default type.
-	// +kubebuilder:default=datafile
-	BackupType BackupType `json:"backupType"`
+	// Specifies the backup method name that is defined in the backup policy.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="forbidden to update spec.backupMethod"
+	BackupMethod string `json:"backupMethod"`
 
-	// if backupType is incremental, parentBackupName is required.
+	// Determines whether the backup contents stored in the backup repository
+	// should be deleted when the backup custom resource(CR) is deleted.
+	// Supported values are `Retain` and `Delete`.
+	//
+	// - `Retain` means that the backup content and its physical snapshot on backup repository are kept.
+	// - `Delete` means that the backup content and its physical snapshot on backup repository are deleted.
+	//
+	// TODO: for the retain policy, we should support in the future for only deleting
+	//   the backup CR but retaining the backup contents in backup repository.
+	//   The current implementation only prevent accidental deletion of backup data.
+	//
+	// +kubebuilder:validation:Enum=Delete;Retain
+	// +kubebuilder:validation:Required
+	// +kubebuilder:default=Delete
+	DeletionPolicy BackupDeletionPolicy `json:"deletionPolicy,omitempty"`
+
+	// Determines a duration up to which the backup should be kept.
+	// Controller will remove all backups that are older than the RetentionPeriod.
+	// If not set, the backup will be kept forever.
+	// For example, RetentionPeriod of `30d` will keep only the backups of last 30 days.
+	// Sample duration format:
+	//
+	// - years: 	2y
+	// - months: 	6mo
+	// - days: 		30d
+	// - hours: 	12h
+	// - minutes: 	30m
+	//
+	// You can also combine the above durations. For example: 30d12h30m.
+	//
 	// +optional
+	RetentionPeriod RetentionPeriod `json:"retentionPeriod,omitempty"`
+
+	// Determines the parent backup name for incremental or differential backup.
+	//
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="forbidden to update spec.parentBackupName"
 	ParentBackupName string `json:"parentBackupName,omitempty"`
+
+	// Specifies a list of name-value pairs representing parameters and their corresponding values.
+	// Parameters match the schema specified in the `actionset.spec.parametersSchema`
+	//
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=128
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="forbidden to update spec.parameters"
+	// +optional
+	Parameters []ParameterPair `json:"parameters,omitempty"`
 }
 
 // BackupStatus defines the observed state of Backup.
 type BackupStatus struct {
+	// Specifies the backup format version, which includes major, minor, and patch versions.
+	//
+	// +optional
+	FormatVersion string `json:"formatVersion,omitempty"`
+
+	// Indicates the current state of the backup operation.
+	//
 	// +optional
 	Phase BackupPhase `json:"phase,omitempty"`
 
-	// Records parentBackupName if backupType is incremental.
-	// +optional
-	ParentBackupName string `json:"parentBackupName,omitempty"`
-
-	// The date and time when the Backup is eligible for garbage collection.
-	// 'null' means the Backup is NOT be cleaned except delete manual.
+	// Indicates when this backup becomes eligible for garbage collection.
+	// A 'null' value implies that the backup will not be cleaned up unless manually deleted.
+	//
 	// +optional
 	Expiration *metav1.Time `json:"expiration,omitempty"`
 
-	// Date/time when the backup started being processed.
+	// Records the time when the backup operation was started.
+	// The server's time is used for this timestamp.
+	//
 	// +optional
 	StartTimestamp *metav1.Time `json:"startTimestamp,omitempty"`
 
-	// Date/time when the backup finished being processed.
+	// Records the time when the backup operation was completed.
+	// This timestamp is recorded even if the backup operation fails.
+	// The server's time is used for this timestamp.
+	//
 	// +optional
 	CompletionTimestamp *metav1.Time `json:"completionTimestamp,omitempty"`
 
-	// The duration time of backup execution.
-	// When converted to a string, the form is "1h2m0.5s".
+	// Records the duration of the backup operation.
+	// When converted to a string, the format is "1h2m0.5s".
+	//
 	// +optional
 	Duration *metav1.Duration `json:"duration,omitempty"`
 
-	// Backup total size.
-	// A string with capacity units in the form of "1Gi", "1Mi", "1Ki".
+	// Records the total size of the data backed up.
+	// The size is represented as a string with capacity units in the format of "1Gi", "1Mi", "1Ki".
+	// If no capacity unit is specified, it is assumed to be in bytes.
+	//
 	// +optional
 	TotalSize string `json:"totalSize,omitempty"`
 
-	// The reason for a backup failure.
+	// Any error that caused the backup operation to fail.
+	//
 	// +optional
 	FailureReason string `json:"failureReason,omitempty"`
 
-	// remoteVolume saves the backup data.
+	// The name of the backup repository.
+	//
+	// +optional
+	BackupRepoName string `json:"backupRepoName,omitempty"`
+
+	// The directory within the backup repository where the backup data is stored.
+	// This is an absolute path within the backup repository.
+	//
+	// +optional
+	Path string `json:"path,omitempty"`
+
+	// Records the path of the Kopia repository.
+	//
+	// +optional
+	KopiaRepoPath string `json:"kopiaRepoPath,omitempty"`
+
+	// Records the name of the persistent volume claim used to store the backup data.
+	//
 	// +optional
 	PersistentVolumeClaimName string `json:"persistentVolumeClaimName,omitempty"`
 
-	// logFilePersistentVolumeClaimName saves the logfile backup data.
+	// Records the time range of the data backed up. For Point-in-Time Recovery (PITR),
+	// this is the time range of recoverable data.
+	//
 	// +optional
-	LogFilePersistentVolumeClaimName string `json:"logFilePersistentVolumeClaimName,omitempty"`
+	TimeRange *BackupTimeRange `json:"timeRange,omitempty"`
 
-	// backupToolName references the backup tool name.
+	// Records the target information for this backup.
+	//
 	// +optional
-	BackupToolName string `json:"backupToolName,omitempty"`
+	Target *BackupStatusTarget `json:"target,omitempty"`
 
-	// sourceCluster records the source cluster information for this backup.
-	SourceCluster string `json:"sourceCluster,omitempty"`
+	// Records the targets information for this backup.
+	//
+	// +optional
+	Targets []BackupStatusTarget `json:"targets,omitempty"`
 
-	// availableReplicas available replicas for statefulSet which created by backup.
+	// Records the backup method information for this backup.
+	// Refer to BackupMethod for more details.
+	//
+	// +optional
+	BackupMethod *BackupMethod `json:"backupMethod,omitempty"`
+
+	// Records the encryption config for this backup.
+	//
+	// +optional
+	EncryptionConfig *EncryptionConfig `json:"encryptionConfig,omitempty"`
+
+	// Records the actions status for this backup.
+	//
+	// +optional
+	Actions []ActionStatus `json:"actions,omitempty"`
+
+	// Records the volume snapshot status for the action.
+	//
+	// +optional
+	VolumeSnapshots []VolumeSnapshotStatus `json:"volumeSnapshots,omitempty"`
+
+	// Records the parent backup name for incremental or differential backup.
+	// When the parent backup is deleted, the backup will also be deleted.
+	//
+	// +optional
+	ParentBackupName string `json:"parentBackupName,omitempty"`
+
+	// Records the base full backup name for incremental backup or differential backup.
+	// When the base backup is deleted, the backup will also be deleted.
+	//
+	// +optional
+	BaseBackupName string `json:"baseBackupName,omitempty"`
+
+	// Records any additional information for the backup.
+	//
+	// +optional
+	Extras []map[string]string `json:"extras,omitempty"`
+}
+
+// BackupTimeRange records the time range of backed up data, for PITR, this is the
+// time range of recoverable data.
+type BackupTimeRange struct {
+	// time zone, supports only zone offset, with a value range of "-12:59 ~ +13:00".
+	//
+	// +kubebuilder:validation:Pattern:=`^(\+|\-)(0[0-9]|1[0-3]):([0-5][0-9])$`
+	// +optional
+	TimeZone string `json:"timeZone,omitempty"`
+
+	// Records the start time of the backup, in Coordinated Universal Time (UTC).
+	//
+	// +optional
+	Start *metav1.Time `json:"start,omitempty"`
+
+	// Records the end time of the backup, in Coordinated Universal Time (UTC).
+	//
+	// +optional
+	End *metav1.Time `json:"end,omitempty"`
+}
+
+// BackupDeletionPolicy describes the policy for end-of-life maintenance of backup content.
+// +enum
+// +kubebuilder:validation:Enum={Delete,Retain}
+type BackupDeletionPolicy string
+
+const (
+	BackupDeletionPolicyDelete BackupDeletionPolicy = "Delete"
+	BackupDeletionPolicyRetain BackupDeletionPolicy = "Retain"
+)
+
+// BackupPhase describes the lifecycle phase of a Backup.
+// +enum
+// +kubebuilder:validation:Enum={New,InProgress,Running,Completed,Failed,Deleting}
+type BackupPhase string
+
+const (
+	// BackupPhaseNew means the backup has been created but not yet processed by
+	// the BackupController.
+	BackupPhaseNew BackupPhase = "New"
+
+	// BackupPhaseRunning means the backup is currently executing.
+	BackupPhaseRunning BackupPhase = "Running"
+
+	// BackupPhaseCompleted means the backup has run successfully without errors.
+	BackupPhaseCompleted BackupPhase = "Completed"
+
+	// BackupPhaseFailed means the backup ran but encountered an error that
+	// prevented it from completing successfully.
+	BackupPhaseFailed BackupPhase = "Failed"
+
+	// BackupPhaseDeleting means the backup and all its associated data are being deleted.
+	BackupPhaseDeleting BackupPhase = "Deleting"
+)
+
+type ActionStatus struct {
+	// The name of the action.
+	//
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Records the target pod name which has been backed up.
+	TargetPodName string `json:"targetPodName,omitempty"`
+
+	// The current phase of the action.
+	//
+	// +optional
+	Phase ActionPhase `json:"phase,omitempty"`
+
+	// Records the time an action was started.
+	//
+	// +optional
+	StartTimestamp *metav1.Time `json:"startTimestamp,omitempty"`
+
+	// Records the time an action was completed.
+	//
+	// +optional
+	CompletionTimestamp *metav1.Time `json:"completionTimestamp,omitempty"`
+
+	// An error that caused the action to fail.
+	//
+	// +optional
+	FailureReason string `json:"failureReason,omitempty"`
+
+	// The type of the action.
+	//
+	// +optional
+	ActionType ActionType `json:"actionType,omitempty"`
+
+	// Available replicas for statefulSet action.
+	//
 	// +optional
 	AvailableReplicas *int32 `json:"availableReplicas,omitempty"`
 
-	// manifests determines the backup metadata info.
+	// The object reference for the action.
+	//
 	// +optional
-	Manifests *ManifestsStatus `json:"manifests,omitempty"`
+	ObjectRef *corev1.ObjectReference `json:"objectRef,omitempty"`
+
+	// The total size of backed up data size.
+	// A string with capacity units in the format of "1Gi", "1Mi", "1Ki".
+	// If no capacity unit is specified, it is assumed to be in bytes.
+	//
+	// +optional
+	TotalSize string `json:"totalSize,omitempty"`
+
+	// Records the time range of backed up data, for PITR, this is the time
+	// range of recoverable data.
+	//
+	// +optional
+	TimeRange *BackupTimeRange `json:"timeRange,omitempty"`
+
+	// Records the volume snapshot status for the action.
+	//
+	// +optional
+	VolumeSnapshots []VolumeSnapshotStatus `json:"volumeSnapshots,omitempty"`
 }
 
-type ManifestsStatus struct {
-	// backupLog records startTime and stopTime of data logging.
-	// +optional
-	BackupLog *BackupLogStatus `json:"backupLog,omitempty"`
+type BackupStatusTarget struct {
+	BackupTarget `json:",inline"`
 
-	// target records the target cluster metadata string, which is in JSON format.
-	// +optional
-	Target string `json:"target,omitempty"`
-
-	// snapshot records the volume snapshot metadata.
-	// +optional
-	Snapshot *BackupSnapshotStatus `json:"backupSnapshot,omitempty"`
-
-	// backupTool records information about backup files generated by the backup tool.
-	// +optional
-	BackupTool *BackupToolManifestsStatus `json:"backupTool,omitempty"`
-
-	// userContext stores some loosely structured and extensible information.
-	// +optional
-	UserContext map[string]string `json:"userContext,omitempty"`
+	// Records the selected pods by the target info during backup.
+	SelectedTargetPods []string `json:"selectedTargetPods,omitempty"`
 }
 
-type BackupLogStatus struct {
-	// startTime records the start time of data logging.
+type VolumeSnapshotStatus struct {
+	// The name of the volume snapshot.
+	//
 	// +optional
-	StartTime *metav1.Time `json:"startTime,omitempty"`
+	Name string `json:"name,omitempty"`
 
-	// stopTime records the stop time of data logging.
+	// The name of the volume snapshot content.
+	//
 	// +optional
-	StopTime *metav1.Time `json:"stopTime,omitempty"`
-}
+	ContentName string `json:"contentName,omitempty"`
 
-type BackupSnapshotStatus struct {
-	// volumeSnapshotName records the volumeSnapshot name.
-	// +optional
-	VolumeSnapshotName string `json:"volumeSnapshotName,omitempty"`
-
-	// volumeSnapshotContentName specifies the name of a pre-existing VolumeSnapshotContent
-	// object representing an existing volume snapshot.
-	// This field should be set if the snapshot already exists and only needs a representation in Kubernetes.
-	// This field is immutable.
-	// +optional
-	VolumeSnapshotContentName string `json:"volumeSnapshotContentName,omitempty"`
-}
-
-type BackupToolManifestsStatus struct {
-	// filePath records the file path of backup.
-	// +optional
-	FilePath string `json:"filePath,omitempty"`
-
-	// logFilePath records the log file path of backup.
-	// +optional
-	LogFilePath string `json:"logFilePath,omitempty"`
-
-	// volumeName records volume name of backup data pvc.
+	// The name of the volume.
+	//
 	// +optional
 	VolumeName string `json:"volumeName,omitempty"`
 
-	// Backup upload total size.
-	// A string with capacity units in the form of "1Gi", "1Mi", "1Ki".
+	// The size of the volume snapshot.
+	//
 	// +optional
-	UploadTotalSize string `json:"uploadTotalSize,omitempty"`
+	Size string `json:"size,omitempty"`
 
-	// checksum of backup file, generated by md5 or sha1 or sha256.
-	// +optional
-	Checksum string `json:"checksum,omitempty"`
-
-	// backup checkpoint, for incremental backup.
-	// +optional
-	Checkpoint string `json:"checkpoint,omitempty"`
+	// Associates this volumeSnapshot with its corresponding target.
+	TargetName string `json:"targetName,omitempty"`
 }
+
+type ActionPhase string
+
+const (
+	// ActionPhaseNew means the action has been created but not yet processed by
+	// the BackupController.
+	ActionPhaseNew ActionPhase = "New"
+
+	// ActionPhaseRunning means the action is currently executing.
+	ActionPhaseRunning ActionPhase = "Running"
+
+	// ActionPhaseCompleted means the action has run successfully without errors.
+	ActionPhaseCompleted ActionPhase = "Completed"
+
+	// ActionPhaseFailed means the action ran but encountered an error that
+	ActionPhaseFailed ActionPhase = "Failed"
+)
+
+type ActionType string
+
+const (
+	ActionTypeJob         ActionType = "Job"
+	ActionTypeStatefulSet ActionType = "StatefulSet"
+	ActionTypeNone        ActionType = ""
+)
 
 // +genclient
 // +k8s:openapi-gen=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:categories={kubeblocks},scope=Namespaced
-// +kubebuilder:printcolumn:name="TYPE",type=string,JSONPath=`.spec.backupType`
+// +kubebuilder:printcolumn:name="POLICY",type=string,JSONPath=`.spec.backupPolicyName`
+// +kubebuilder:printcolumn:name="METHOD",type=string,JSONPath=`.spec.backupMethod`
+// +kubebuilder:printcolumn:name="REPO",type=string,JSONPath=`.status.backupRepoName`
 // +kubebuilder:printcolumn:name="STATUS",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="SOURCE-CLUSTER",type=string,JSONPath=`.status.sourceCluster`
 // +kubebuilder:printcolumn:name="TOTAL-SIZE",type=string,JSONPath=`.status.totalSize`
 // +kubebuilder:printcolumn:name="DURATION",type=string,JSONPath=`.status.duration`
-// +kubebuilder:printcolumn:name="CREATE-TIME",type=string,JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="DELETION-POLICY",type=string,JSONPath=`.spec.deletionPolicy`
+// +kubebuilder:printcolumn:name="CREATION-TIME",type=string,JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="COMPLETION-TIME",type=string,JSONPath=`.status.completionTimestamp`
+// +kubebuilder:printcolumn:name="EXPIRATION-TIME",type=string,JSONPath=`.status.expiration`
 
-// Backup is the Schema for the backups API (defined by User).
+// Backup is the Schema for the backups API.
 type Backup struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -207,96 +424,30 @@ func init() {
 	SchemeBuilder.Register(&Backup{}, &BackupList{})
 }
 
-// Validate validates the BackupSpec and returns an error if invalid.
-func (r *BackupSpec) Validate(backupPolicy *BackupPolicy) error {
-	notSupportedMessage := "backupPolicy: %s not supports %s backup in backupPolicy"
-	switch r.BackupType {
-	case BackupTypeSnapshot:
-		if backupPolicy.Spec.Snapshot == nil {
-			return fmt.Errorf(notSupportedMessage, r.BackupPolicyName, BackupTypeSnapshot)
-		}
-	case BackupTypeDataFile:
-		if backupPolicy.Spec.Datafile == nil {
-			return fmt.Errorf(notSupportedMessage, r.BackupPolicyName, BackupTypeDataFile)
-		}
-	case BackupTypeLogFile:
-		if backupPolicy.Spec.Logfile == nil {
-			return fmt.Errorf(notSupportedMessage, r.BackupPolicyName, BackupTypeLogFile)
-		}
+// GetStartTime gets the backup start time. Default return status.startTimestamp,
+// unless status.timeRange.startTime is not nil.
+func (r *Backup) GetStartTime() *metav1.Time {
+	s := r.Status
+	if s.TimeRange != nil && s.TimeRange.Start != nil {
+		return s.TimeRange.Start
 	}
-	return nil
+	return s.StartTimestamp
 }
 
-// GetStartTime gets the backup start time. the default return is status.startTime, unless status.manifests.backupLog.startTime is not nil.
-func (r *BackupStatus) GetStartTime() *metav1.Time {
-	if r.Manifests != nil && r.Manifests.BackupLog != nil && r.Manifests.BackupLog.StartTime != nil {
-		return r.Manifests.BackupLog.StartTime
+// GetEndTime gets the backup end time. Default return status.completionTimestamp,
+// unless status.timeRange.endTime is not nil.
+func (r *Backup) GetEndTime() *metav1.Time {
+	s := r.Status
+	if s.TimeRange != nil && s.TimeRange.End != nil {
+		return s.TimeRange.End
 	}
-	return r.StartTimestamp
+	return s.CompletionTimestamp
 }
 
-// GetStopTime gets the backup stop time. the default return is status.completionTimestamp, unless status.manifests.backupLog.stopTime is not nil.
-func (r *BackupStatus) GetStopTime() *metav1.Time {
-	if r.Manifests != nil && r.Manifests.BackupLog != nil && r.Manifests.BackupLog.StopTime != nil {
-		return r.Manifests.BackupLog.StopTime
+func (r *Backup) GetTimeZone() string {
+	s := r.Status
+	if s.TimeRange != nil {
+		return s.TimeRange.TimeZone
 	}
-	return r.CompletionTimestamp
-}
-
-// GetRecoverableTimeRange returns the recoverable time range array.
-func GetRecoverableTimeRange(backups []Backup) []BackupLogStatus {
-	sort.Slice(backups, func(i, j int) bool {
-		if backups[i].Status.StartTimestamp == nil && backups[j].Status.StartTimestamp != nil {
-			return false
-		}
-		if backups[i].Status.StartTimestamp != nil && backups[j].Status.StartTimestamp == nil {
-			return true
-		}
-		if backups[i].Status.StartTimestamp.Equal(backups[j].Status.StartTimestamp) {
-			return backups[i].Name < backups[j].Name
-		}
-		return backups[i].Status.StartTimestamp.Before(backups[j].Status.StartTimestamp)
-	})
-	getLogfileStartTimeAndStopTime := func() (*metav1.Time, *metav1.Time) {
-		var (
-			startTime *metav1.Time
-			stopTime  *metav1.Time
-		)
-		for _, b := range backups {
-			if b.Spec.BackupType != BackupTypeLogFile {
-				continue
-			}
-			startTime = b.Status.GetStartTime()
-			stopTime = b.Status.GetStopTime()
-			break
-		}
-		return startTime, stopTime
-	}
-	logfileStartTime, logfileStopTime := getLogfileStartTimeAndStopTime()
-	// if not exists the startTime/stopTime of the first log file, return
-	if logfileStartTime.IsZero() || logfileStopTime.IsZero() {
-		return nil
-	}
-	getFirstRecoverableBaseBackup := func() *Backup {
-		for _, b := range backups {
-			if !slices.Contains([]BackupType{BackupTypeDataFile, BackupTypeSnapshot}, b.Spec.BackupType) ||
-				b.Status.Phase != BackupCompleted {
-				continue
-			}
-			backupStopTime := b.Status.GetStopTime()
-			// checks if the baseBackup stop time is between logfileStartTime and logfileStopTime.
-			if !backupStopTime.Before(logfileStartTime) &&
-				backupStopTime.Before(logfileStopTime) {
-				return &b
-			}
-		}
-		return nil
-	}
-	firstRecoverableBaseBackup := getFirstRecoverableBaseBackup()
-	if firstRecoverableBaseBackup == nil {
-		return nil
-	}
-	// range of recoverable time
-	return []BackupLogStatus{{StopTime: logfileStopTime,
-		StartTime: firstRecoverableBaseBackup.Status.GetStopTime()}}
+	return ""
 }

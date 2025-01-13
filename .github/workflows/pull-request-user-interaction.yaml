@@ -1,12 +1,15 @@
-name: PULL-REQUEST-USER-INTERACT
+name: Pull Request User Interact
 
 on:
   pull_request_target:
     types: [ edited, opened ]
+    branches:
+      - main
+      - release-*
 
 env:
   GITHUB_TOKEN: ${{ secrets.KUBEBLOCKS_TOKEN }}
-  REVIEWERS: 'realzyy,fireworm2002'
+  REVIEWERS: 'ruijun2002'
   REPO: 'kubeblocks'
   ISINTERACTION: ''
 
@@ -15,7 +18,7 @@ jobs:
     name: GET PR Issue Label
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: get issue link
         run: |
           gh api graphql -f query='

@@ -1,4 +1,4 @@
-name: Closed Milestones
+name: Milestones Closed
 
 on:
   milestone:
@@ -7,22 +7,22 @@ on:
 env:
   GITHUB_TOKEN: ${{ secrets.KUBEBLOCKS_TOKEN }}
   REPO: kubeblocks
-  milestone: 7
+  milestone: 10
   ORGANIZATION: apecloud
   PROJECT_NUMBER: 2
 
 jobs:
   move_milestone:
-    uses: apecloud/apecloud-cd/.github/workflows/milestone-move.yml@v0.1.31
+    uses: apecloud/apecloud-cd/.github/workflows/milestone-move.yml@v0.1.32
     with:
-      APECD_REF: "v0.1.31"
+      APECD_REF: "v0.1.32"
     secrets: inherit
 
   move_issues:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Get project data      
         run: |
           gh api graphql -f query='

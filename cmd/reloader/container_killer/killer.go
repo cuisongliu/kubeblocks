@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2024 ApeCloud Co., Ltd
 
 This file is part of KubeBlocks project
 
@@ -32,8 +32,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	cfgutil "github.com/apecloud/kubeblocks/internal/configuration/container"
-	viper "github.com/apecloud/kubeblocks/internal/viperx"
+	cfgutil "github.com/apecloud/kubeblocks/pkg/configuration/container"
+	viper "github.com/apecloud/kubeblocks/pkg/viperx"
 )
 
 const (
