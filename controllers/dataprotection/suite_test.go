@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2025 ApeCloud Co., Ltd
 
 This file is part of KubeBlocks project
 
@@ -21,8 +21,8 @@ package dataprotection
 
 import (
 	"context"
-	"fmt"
 	"go/build"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -30,24 +30,27 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	snapshotv1beta1 "github.com/kubernetes-csi/external-snapshotter/client/v3/apis/volumesnapshot/v1beta1"
-	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	vsv1beta1 "github.com/kubernetes-csi/external-snapshotter/client/v3/apis/volumesnapshot/v1beta1"
+	vsv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	"go.uber.org/zap/zapcore"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	testclocks "k8s.io/utils/clock/testing"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	appsv1alpha1 "github.com/apecloud/kubeblocks/apis/apps/v1alpha1"
-	dataprotectionv1alpha1 "github.com/apecloud/kubeblocks/apis/dataprotection/v1alpha1"
-	storagev1alpha1 "github.com/apecloud/kubeblocks/apis/storage/v1alpha1"
-	"github.com/apecloud/kubeblocks/internal/constant"
-	"github.com/apecloud/kubeblocks/internal/testutil"
-	viper "github.com/apecloud/kubeblocks/internal/viperx"
+	appsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
+	dpv1alpha1 "github.com/apecloud/kubeblocks/apis/dataprotection/v1alpha1"
+	"github.com/apecloud/kubeblocks/pkg/constant"
+	dptypes "github.com/apecloud/kubeblocks/pkg/dataprotection/types"
+	"github.com/apecloud/kubeblocks/pkg/testutil"
+	viper "github.com/apecloud/kubeblocks/pkg/viperx"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -55,10 +58,12 @@ import (
 
 var cfg *rest.Config
 var k8sClient client.Client
+var k8sManager manager.Manager
 var testEnv *envtest.Environment
 var ctx context.Context
 var cancel context.CancelFunc
 var testCtx testutil.TestContext
+var fakeClock *testclocks.FakeClock
 
 func init() {
 	viper.AutomaticEnv()
@@ -80,8 +85,12 @@ var _ = BeforeSuite(func() {
 
 	ctx, cancel = context.WithCancel(context.TODO())
 
+	viper.SetDefault(constant.CfgKeyCtrlrMgrNS, "default")
 	viper.SetDefault(constant.KBToolsImage, "apecloud/kubeblocks:latest")
-	fmt.Printf("config settings: %v\n", viper.AllSettings())
+	viper.SetDefault(dptypes.CfgKeyWorkerServiceAccountName, "kubeblocks-dataprotection-worker")
+	viper.SetDefault(dptypes.CfgKeyExecWorkerServiceAccountName, "kubeblocks-dataprotection-exec-worker")
+	viper.SetDefault(dptypes.CfgKeyWorkerServiceAccountAnnotations, `{"role-arn":"arn:xxx:xxx"}`)
+	viper.SetDefault(dptypes.CfgKeyWorkerClusterRoleName, "kubeblocks-dataprotection-worker-role")
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
@@ -103,19 +112,16 @@ var _ = BeforeSuite(func() {
 
 	scheme := scheme.Scheme
 
-	err = snapshotv1.AddToScheme(scheme)
+	err = vsv1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = snapshotv1beta1.AddToScheme(scheme)
+	err = vsv1beta1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = appsv1alpha1.AddToScheme(scheme)
+	err = appsv1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = dataprotectionv1alpha1.AddToScheme(scheme)
-	Expect(err).NotTo(HaveOccurred())
-
-	err = storagev1alpha1.AddToScheme(scheme)
+	err = dpv1alpha1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme
@@ -125,63 +131,97 @@ var _ = BeforeSuite(func() {
 	Expect(k8sClient).NotTo(BeNil())
 
 	uncachedObjects := []client.Object{
-		&dataprotectionv1alpha1.BackupPolicy{},
-		&dataprotectionv1alpha1.BackupTool{},
-		&dataprotectionv1alpha1.Backup{},
-		&dataprotectionv1alpha1.RestoreJob{},
-		&snapshotv1.VolumeSnapshot{},
-		&snapshotv1beta1.VolumeSnapshot{},
+		&dpv1alpha1.ActionSet{},
+		&dpv1alpha1.BackupPolicy{},
+		&dpv1alpha1.BackupSchedule{},
+		&dpv1alpha1.BackupRepo{},
+		&dpv1alpha1.Backup{},
+		&dpv1alpha1.Restore{},
+		&vsv1.VolumeSnapshot{},
+		&vsv1beta1.VolumeSnapshot{},
 		&batchv1.Job{},
+		&batchv1.CronJob{},
 	}
 	// run reconcile
-	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
-		Scheme:                scheme,
-		MetricsBindAddress:    "0",
-		ClientDisableCacheFor: uncachedObjects,
+	k8sManager, err = ctrl.NewManager(cfg, ctrl.Options{
+		Scheme:  scheme,
+		Metrics: server.Options{BindAddress: "0"},
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: uncachedObjects,
+			},
+		},
 	})
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&BackupReconciler{
-		Client:   k8sManager.GetClient(),
+		Client:   k8sClient,
 		Scheme:   k8sManager.GetScheme(),
 		Recorder: k8sManager.GetEventRecorderFor("backup-controller"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
+
+	if err = (&BackupPolicyTemplateReconciler{
+		Client:   k8sClient,
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorderFor("backup-policy-template-controller"),
+	}).SetupWithManager(k8sManager); err != nil {
+		os.Exit(1)
+	}
+
+	err = (&BackupScheduleReconciler{
+		Client:   k8sClient,
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorderFor("backup-schedule-controller"),
+	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&BackupPolicyReconciler{
-		Client:   k8sManager.GetClient(),
+		Client:   k8sClient,
 		Scheme:   k8sManager.GetScheme(),
 		Recorder: k8sManager.GetEventRecorderFor("backup-policy-controller"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&BackupToolReconciler{
-		Client:   k8sManager.GetClient(),
+	err = (&ActionSetReconciler{
+		Client:   k8sClient,
 		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("backup-tool-controller"),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&RestoreJobReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("restore-job-controller"),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&CronJobReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("cronjob-controller"),
+		Recorder: k8sManager.GetEventRecorderFor("actionset-controller"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&BackupRepoReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("backup-repo-controller"),
+		Client:     k8sClient,
+		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("backup-repo-controller"),
+		RestConfig: k8sManager.GetConfig(),
 	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&RestoreReconciler{
+		Client:   k8sClient,
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorderFor("restore-controller"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&VolumePopulatorReconciler{
+		Client:   k8sClient,
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorderFor("volume-populate-controller"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	if err = (&LogCollectionReconciler{
+		Client:     k8sClient,
+		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("log-collection-controller"),
+		RestConfig: k8sManager.GetConfig(),
+	}).SetupWithManager(k8sManager); err != nil {
+		os.Exit(1)
+	}
+
+	err = mockGCReconciler(k8sManager).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	testCtx = testutil.NewDefaultTestContext(ctx, k8sClient, testEnv)
@@ -199,3 +239,13 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
+
+func mockGCReconciler(mgr ctrl.Manager) *GCReconciler {
+	fakeClock = testclocks.NewFakeClock(time.Now())
+	return &GCReconciler{
+		Client:    mgr.GetClient(),
+		Recorder:  mgr.GetEventRecorderFor("gc-controller"),
+		clock:     fakeClock,
+		frequency: time.Duration(1) * time.Second,
+	}
+}

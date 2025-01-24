@@ -21,7 +21,7 @@ Meet the following requirements for a smooth user experience:
 * Make sure the following tools are installed on your laptop:
   * [Docker](https://docs.docker.com/get-docker/): v20.10.5 (runc ≥ v1.0.0-rc93) or above;
   * [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl): it is used to interact with Kubernetes clusters;
-  * [kbcli](./../installation/install-with-kbcli/install-kbcli.md): it is used for the interaction between Playground and KubeBlocks.
+  * [kbcli](./../installation/install-kbcli.md): it is used for the interaction between Playground and KubeBlocks.
 
 ## Initialize Playground
 
@@ -38,23 +38,24 @@ Meet the following requirements for a smooth user experience:
    2. Deploys KubeBlocks in the K3d cluster.
    3. Creates a standalone MySQL cluster.
 
-:::note
+   :::note
 
-* If you previously ran `kbcli playground init` and it failed, running it again may cause errors. Please run the `kbcli playground destroy` command first to clean up the environment, then run `kbcli playground init` again.
-* If you run Playground on Windows and the error below occurs, it is caused by the safety strategy of Windows 11 and the `kbcli.exe` you operate might be tampered with by a third party (or when you built the kbcli binary file through source on Windows).
+   * If you previously ran `kbcli playground init` and it failed, running it again may cause errors. Please run the `kbcli playground destroy` command first to clean up the environment, then run `kbcli playground init` again.
+   * If you run Playground on Windows and the error below occurs, it is caused by the safety strategy of Windows 11 and the `kbcli.exe` you operate might be tampered with by a third party (or when you built the kbcli binary file through source on Windows).
 
-  ```bash
-  error: failed to set up k3d cluster: failed to create k3d cluster kb-playground: Failed Cluster Start: Failed to start server k3d-kb-playground-server-0: Node k3d-kb-playground-server-0 failed to get ready: error waiting for log line `k3s is up and running` from node 'k3d-kb-playground-server-0': stopped returning log lines
-  ```
+   ```bash
+   error: failed to set up k3d cluster: failed to create k3d cluster kb-playground: Failed Cluster Start: Failed to start server k3d-kb-playground-server-0: Node k3d-kb-playground-server-0 failed to get ready: error waiting for log line `k3s is up and running` from node 'k3d-kb-playground-server-0': stopped returning log lines
+   ```
 
-  You can follow the steps to solve this problem.
+   You can follow the steps to solve this problem.
 
-  1. Uninstall or delete the current `kbcli.exe`.
-  2. Download the latest kbcli by `winget` or visit the [GitHub release page](https://github.com/apecloud/kubeblocks/releases) of KubeBlocks to download kbcli again.
+   1. Uninstall or delete the current `kbcli.exe`.
+   2. Download the latest kbcli by `winget` or visit the [GitHub release page](https://github.com/apecloud/kubeblocks/releases) of KubeBlocks to download kbcli again.
 
-:::
+   :::
 
-1. Check the MySQL cluster repeatedly until the status becomes `Running`.
+
+2. Check the MySQL cluster repeatedly until the status becomes `Running`.
 
    ```bash
    kbcli cluster list
@@ -100,7 +101,7 @@ kbcli cluster connect mycluster
 
 1. Get Credentials.
    ```bash
-   kbcli cluster connect --show-example --client=cli mycluster
+   kbcli cluster connect --show-example --show-password --client=cli mycluster
    ```
 3. Run `port-forward`.
 
@@ -131,27 +132,6 @@ kbcli cluster connect mycluster
    +--------------------+
    5 rows in set (0.02 sec)
    ```
-
-### Observe a MySQL cluster
-
-KubeBlocks supports complete observability capabilities. This section demonstrates the monitoring function of KubeBlocks.
-
-***Steps:***
-
-1. Open the grafana dashboard.
-
-   ```bash
-   kbcli dashboard open kubeblocks-grafana
-   ```
-
-   **Result:**
-
-   A monitoring page on Grafana website is loaded automatically after the command is executed.
-
-2. Click the Dashboard icon on the left bar and monitoring panels show on the page.
-   ![Dashboards](./../../img/quick_start_dashboards.png)
-3. Click **General** -> **MySQL** to monitor the status of the MySQL cluster.
-   ![MySQL_panel](./../../img/quick_start_mysql_panel.png)
 
 ### High availability of MySQL
 
@@ -269,7 +249,7 @@ NON-STOP NYAN CAT is a demo application to observe how the database cluster exce
 
    </details>
 
-2. Check the NYAN CAT add-on status and when its status is `Enabled`, this application is ready.
+2. Check the NYAN CAT addon status and when its status is `Enabled`, this application is ready.
 
    ```bash
    kbcli addon list | grep nyancat 

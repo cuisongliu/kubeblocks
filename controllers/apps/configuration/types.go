@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2025 ApeCloud Co., Ltd
 
 This file is part of KubeBlocks project
 
@@ -25,8 +25,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	cfgproto "github.com/apecloud/kubeblocks/internal/configuration/proto"
-	intctrlutil "github.com/apecloud/kubeblocks/internal/controllerutil"
+	cfgproto "github.com/apecloud/kubeblocks/pkg/configuration/proto"
+	intctrlutil "github.com/apecloud/kubeblocks/pkg/controllerutil"
 )
 
 type createReconfigureClient func(addr string) (cfgproto.ReconfigureClient, error)
@@ -38,7 +38,6 @@ type RestartContainerFunc func(pod *corev1.Pod, ctx context.Context, containerNa
 type OnlineUpdatePodFunc func(pod *corev1.Pod, ctx context.Context, createClient createReconfigureClient, configSpec string, updatedParams map[string]string) error
 
 // Node: Distinguish between implementation and interface.
-// RollingUpgradeFuncs defines the interface, rsm is an implementation of Stateful, Replication and Consensus, not the only solution.
 
 type RollingUpgradeFuncs struct {
 	GetPodsFunc          GetPodsFunc
@@ -47,38 +46,11 @@ type RollingUpgradeFuncs struct {
 	RestartComponent     RestartComponent
 }
 
-func GetConsensusRollingUpgradeFuncs() RollingUpgradeFuncs {
+func GetInstanceSetRollingUpgradeFuncs() RollingUpgradeFuncs {
 	return RollingUpgradeFuncs{
-		GetPodsFunc:          getConsensusPods,
+		GetPodsFunc:          getPodsForOnlineUpdate,
 		RestartContainerFunc: commonStopContainerWithPod,
 		OnlineUpdatePodFunc:  commonOnlineUpdateWithPod,
-		RestartComponent:     restartStatefulComponent,
-	}
-}
-
-func GetStatefulSetRollingUpgradeFuncs() RollingUpgradeFuncs {
-	return RollingUpgradeFuncs{
-		GetPodsFunc:          getStatefulSetPods,
-		RestartContainerFunc: commonStopContainerWithPod,
-		OnlineUpdatePodFunc:  commonOnlineUpdateWithPod,
-		RestartComponent:     restartStatefulComponent,
-	}
-}
-
-func GetReplicationRollingUpgradeFuncs() RollingUpgradeFuncs {
-	return RollingUpgradeFuncs{
-		GetPodsFunc:          getReplicationSetPods,
-		RestartContainerFunc: commonStopContainerWithPod,
-		OnlineUpdatePodFunc:  commonOnlineUpdateWithPod,
-		RestartComponent:     restartStatefulComponent,
-	}
-}
-
-func GetDeploymentRollingUpgradeFuncs() RollingUpgradeFuncs {
-	return RollingUpgradeFuncs{
-		GetPodsFunc:          getDeploymentRollingPods,
-		RestartContainerFunc: commonStopContainerWithPod,
-		OnlineUpdatePodFunc:  commonOnlineUpdateWithPod,
-		RestartComponent:     restartStatelessComponent,
+		RestartComponent:     restartComponent,
 	}
 }

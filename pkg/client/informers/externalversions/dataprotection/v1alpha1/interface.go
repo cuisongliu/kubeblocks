@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2025 ApeCloud Co., Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,16 +24,22 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
+	// ActionSets returns a ActionSetInformer.
+	ActionSets() ActionSetInformer
 	// Backups returns a BackupInformer.
 	Backups() BackupInformer
 	// BackupPolicies returns a BackupPolicyInformer.
 	BackupPolicies() BackupPolicyInformer
+	// BackupPolicyTemplates returns a BackupPolicyTemplateInformer.
+	BackupPolicyTemplates() BackupPolicyTemplateInformer
 	// BackupRepos returns a BackupRepoInformer.
 	BackupRepos() BackupRepoInformer
-	// BackupTools returns a BackupToolInformer.
-	BackupTools() BackupToolInformer
-	// RestoreJobs returns a RestoreJobInformer.
-	RestoreJobs() RestoreJobInformer
+	// BackupSchedules returns a BackupScheduleInformer.
+	BackupSchedules() BackupScheduleInformer
+	// Restores returns a RestoreInformer.
+	Restores() RestoreInformer
+	// StorageProviders returns a StorageProviderInformer.
+	StorageProviders() StorageProviderInformer
 }
 
 type version struct {
@@ -47,6 +53,11 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
+// ActionSets returns a ActionSetInformer.
+func (v *version) ActionSets() ActionSetInformer {
+	return &actionSetInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
 // Backups returns a BackupInformer.
 func (v *version) Backups() BackupInformer {
 	return &backupInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
@@ -57,17 +68,27 @@ func (v *version) BackupPolicies() BackupPolicyInformer {
 	return &backupPolicyInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
+// BackupPolicyTemplates returns a BackupPolicyTemplateInformer.
+func (v *version) BackupPolicyTemplates() BackupPolicyTemplateInformer {
+	return &backupPolicyTemplateInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
 // BackupRepos returns a BackupRepoInformer.
 func (v *version) BackupRepos() BackupRepoInformer {
 	return &backupRepoInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
-// BackupTools returns a BackupToolInformer.
-func (v *version) BackupTools() BackupToolInformer {
-	return &backupToolInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+// BackupSchedules returns a BackupScheduleInformer.
+func (v *version) BackupSchedules() BackupScheduleInformer {
+	return &backupScheduleInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
-// RestoreJobs returns a RestoreJobInformer.
-func (v *version) RestoreJobs() RestoreJobInformer {
-	return &restoreJobInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+// Restores returns a RestoreInformer.
+func (v *version) Restores() RestoreInformer {
+	return &restoreInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// StorageProviders returns a StorageProviderInformer.
+func (v *version) StorageProviders() StorageProviderInformer {
+	return &storageProviderInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

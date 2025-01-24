@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2025 ApeCloud Co., Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,22 +24,18 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// BackupPolicyTemplates returns a BackupPolicyTemplateInformer.
-	BackupPolicyTemplates() BackupPolicyTemplateInformer
 	// Clusters returns a ClusterInformer.
 	Clusters() ClusterInformer
 	// ClusterDefinitions returns a ClusterDefinitionInformer.
 	ClusterDefinitions() ClusterDefinitionInformer
-	// ClusterVersions returns a ClusterVersionInformer.
-	ClusterVersions() ClusterVersionInformer
-	// ComponentClassDefinitions returns a ComponentClassDefinitionInformer.
-	ComponentClassDefinitions() ComponentClassDefinitionInformer
-	// ComponentResourceConstraints returns a ComponentResourceConstraintInformer.
-	ComponentResourceConstraints() ComponentResourceConstraintInformer
+	// Components returns a ComponentInformer.
+	Components() ComponentInformer
+	// ComponentDefinitions returns a ComponentDefinitionInformer.
+	ComponentDefinitions() ComponentDefinitionInformer
+	// ComponentVersions returns a ComponentVersionInformer.
+	ComponentVersions() ComponentVersionInformer
 	// ConfigConstraints returns a ConfigConstraintInformer.
 	ConfigConstraints() ConfigConstraintInformer
-	// OpsRequests returns a OpsRequestInformer.
-	OpsRequests() OpsRequestInformer
 	// ServiceDescriptors returns a ServiceDescriptorInformer.
 	ServiceDescriptors() ServiceDescriptorInformer
 }
@@ -55,11 +51,6 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// BackupPolicyTemplates returns a BackupPolicyTemplateInformer.
-func (v *version) BackupPolicyTemplates() BackupPolicyTemplateInformer {
-	return &backupPolicyTemplateInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
-}
-
 // Clusters returns a ClusterInformer.
 func (v *version) Clusters() ClusterInformer {
 	return &clusterInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
@@ -70,29 +61,24 @@ func (v *version) ClusterDefinitions() ClusterDefinitionInformer {
 	return &clusterDefinitionInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
-// ClusterVersions returns a ClusterVersionInformer.
-func (v *version) ClusterVersions() ClusterVersionInformer {
-	return &clusterVersionInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+// Components returns a ComponentInformer.
+func (v *version) Components() ComponentInformer {
+	return &componentInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
-// ComponentClassDefinitions returns a ComponentClassDefinitionInformer.
-func (v *version) ComponentClassDefinitions() ComponentClassDefinitionInformer {
-	return &componentClassDefinitionInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+// ComponentDefinitions returns a ComponentDefinitionInformer.
+func (v *version) ComponentDefinitions() ComponentDefinitionInformer {
+	return &componentDefinitionInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
-// ComponentResourceConstraints returns a ComponentResourceConstraintInformer.
-func (v *version) ComponentResourceConstraints() ComponentResourceConstraintInformer {
-	return &componentResourceConstraintInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+// ComponentVersions returns a ComponentVersionInformer.
+func (v *version) ComponentVersions() ComponentVersionInformer {
+	return &componentVersionInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // ConfigConstraints returns a ConfigConstraintInformer.
 func (v *version) ConfigConstraints() ConfigConstraintInformer {
 	return &configConstraintInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
-}
-
-// OpsRequests returns a OpsRequestInformer.
-func (v *version) OpsRequests() OpsRequestInformer {
-	return &opsRequestInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // ServiceDescriptors returns a ServiceDescriptorInformer.

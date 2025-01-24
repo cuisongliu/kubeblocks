@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2025 ApeCloud Co., Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ var SecretKey string
 var InitEnv bool
 var TestType string
 var SkipCase string
+var ConfigType string
 var TestResults []Result
 
 type Result struct {

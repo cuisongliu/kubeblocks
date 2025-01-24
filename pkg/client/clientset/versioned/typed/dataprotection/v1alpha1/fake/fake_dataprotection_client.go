@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2025 ApeCloud Co., Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,10 @@ type FakeDataprotectionV1alpha1 struct {
 	*testing.Fake
 }
 
+func (c *FakeDataprotectionV1alpha1) ActionSets() v1alpha1.ActionSetInterface {
+	return &FakeActionSets{c}
+}
+
 func (c *FakeDataprotectionV1alpha1) Backups(namespace string) v1alpha1.BackupInterface {
 	return &FakeBackups{c, namespace}
 }
@@ -36,16 +40,24 @@ func (c *FakeDataprotectionV1alpha1) BackupPolicies(namespace string) v1alpha1.B
 	return &FakeBackupPolicies{c, namespace}
 }
 
+func (c *FakeDataprotectionV1alpha1) BackupPolicyTemplates() v1alpha1.BackupPolicyTemplateInterface {
+	return &FakeBackupPolicyTemplates{c}
+}
+
 func (c *FakeDataprotectionV1alpha1) BackupRepos() v1alpha1.BackupRepoInterface {
 	return &FakeBackupRepos{c}
 }
 
-func (c *FakeDataprotectionV1alpha1) BackupTools() v1alpha1.BackupToolInterface {
-	return &FakeBackupTools{c}
+func (c *FakeDataprotectionV1alpha1) BackupSchedules(namespace string) v1alpha1.BackupScheduleInterface {
+	return &FakeBackupSchedules{c, namespace}
 }
 
-func (c *FakeDataprotectionV1alpha1) RestoreJobs(namespace string) v1alpha1.RestoreJobInterface {
-	return &FakeRestoreJobs{c, namespace}
+func (c *FakeDataprotectionV1alpha1) Restores(namespace string) v1alpha1.RestoreInterface {
+	return &FakeRestores{c, namespace}
+}
+
+func (c *FakeDataprotectionV1alpha1) StorageProviders() v1alpha1.StorageProviderInterface {
+	return &FakeStorageProviders{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

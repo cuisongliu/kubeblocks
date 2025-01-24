@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2025 ApeCloud Co., Ltd
 
 This file is part of KubeBlocks project
 
@@ -23,8 +23,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	appsv1alpha1 "github.com/apecloud/kubeblocks/apis/apps/v1alpha1"
-	cfgcore "github.com/apecloud/kubeblocks/internal/configuration/core"
-	podutil "github.com/apecloud/kubeblocks/internal/controllerutil"
+	podutil "github.com/apecloud/kubeblocks/pkg/controllerutil"
 )
 
 type parallelUpgradePolicy struct {
@@ -35,19 +34,7 @@ func init() {
 }
 
 func (p *parallelUpgradePolicy) Upgrade(params reconfigureParams) (ReturnedStatus, error) {
-	var funcs RollingUpgradeFuncs
-
-	switch params.WorkloadType() {
-	default:
-		return makeReturnedStatus(ESNotSupport), cfgcore.MakeError("not supported component workload type[%s]", params.WorkloadType())
-	case appsv1alpha1.Consensus:
-		funcs = GetConsensusRollingUpgradeFuncs()
-	case appsv1alpha1.Stateful:
-		funcs = GetStatefulSetRollingUpgradeFuncs()
-	case appsv1alpha1.Replication:
-		funcs = GetReplicationRollingUpgradeFuncs()
-	}
-
+	funcs := GetInstanceSetRollingUpgradeFuncs()
 	pods, err := funcs.GetPodsFunc(params)
 	if err != nil {
 		return makeReturnedStatus(ESFailedAndRetry), err

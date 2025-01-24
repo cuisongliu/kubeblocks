@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2025 ApeCloud Co., Ltd
 
 This file is part of KubeBlocks project
 
@@ -30,26 +30,24 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/go-logr/logr"
-	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	"go.uber.org/zap/zapcore"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	appsv1 "github.com/apecloud/kubeblocks/apis/apps/v1"
 	appsv1alpha1 "github.com/apecloud/kubeblocks/apis/apps/v1alpha1"
-	dataprotectionv1alpha1 "github.com/apecloud/kubeblocks/apis/dataprotection/v1alpha1"
-	workloads "github.com/apecloud/kubeblocks/apis/workloads/v1alpha1"
-	"github.com/apecloud/kubeblocks/controllers/apps/configuration"
-	"github.com/apecloud/kubeblocks/controllers/k8score"
-	"github.com/apecloud/kubeblocks/internal/constant"
-	intctrlutil "github.com/apecloud/kubeblocks/internal/controllerutil"
-	"github.com/apecloud/kubeblocks/internal/testutil"
-	viper "github.com/apecloud/kubeblocks/internal/viperx"
+	appsv1beta1 "github.com/apecloud/kubeblocks/apis/apps/v1beta1"
+	"github.com/apecloud/kubeblocks/pkg/constant"
+	"github.com/apecloud/kubeblocks/pkg/controller/model"
+	intctrlutil "github.com/apecloud/kubeblocks/pkg/controllerutil"
+	"github.com/apecloud/kubeblocks/pkg/testutil"
+	viper "github.com/apecloud/kubeblocks/pkg/viperx"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -66,8 +64,6 @@ var testEnv *envtest.Environment
 var ctx context.Context
 var cancel context.CancelFunc
 var testCtx testutil.TestContext
-var clusterRecorder record.EventRecorder
-var systemAccountReconciler *SystemAccountReconciler
 var logger logr.Logger
 
 func init() {
@@ -86,6 +82,8 @@ var _ = BeforeSuite(func() {
 		logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true), func(o *zap.Options) {
 			o.TimeEncoder = zapcore.ISO8601TimeEncoder
 		}))
+	} else {
+		logf.SetLogger(logr.New(logf.NullLogSink{}))
 	}
 
 	viper.SetDefault(constant.CfgKeyCtrlrReconcileRetryDurationMS, 10)
@@ -93,6 +91,7 @@ var _ = BeforeSuite(func() {
 		fmt.Sprintf("[{\"key\":\"%s\", \"operator\": \"Exists\", \"effect\": \"NoSchedule\"}]", testDataPlaneTolerationKey))
 	viper.Set(constant.CfgKeyDataPlaneAffinity,
 		fmt.Sprintf("{\"nodeAffinity\":{\"preferredDuringSchedulingIgnoredDuringExecution\":[{\"preference\":{\"matchExpressions\":[{\"key\":\"%s\",\"operator\":\"In\",\"values\":[\"true\"]}]},\"weight\":100}]}}", testDataPlaneNodeAffinityKey))
+
 	ctx, cancel = context.WithCancel(context.TODO())
 	logger = logf.FromContext(ctx).WithValues()
 	logger.Info("logger start")
@@ -103,7 +102,8 @@ var _ = BeforeSuite(func() {
 			// use dependent external CRDs.
 			// resolved by ref: https://github.com/operator-framework/operator-sdk/issues/4434#issuecomment-786794418
 			filepath.Join(build.Default.GOPATH, "pkg", "mod", "github.com", "kubernetes-csi/external-snapshotter/",
-				"client/v6@v6.2.0", "config", "crd")},
+				"client/v6@v6.2.0", "config", "crd"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -115,15 +115,15 @@ var _ = BeforeSuite(func() {
 
 	err = appsv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
+	model.AddScheme(appsv1alpha1.AddToScheme)
 
-	err = dataprotectionv1alpha1.AddToScheme(scheme.Scheme)
+	err = appsv1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
+	model.AddScheme(appsv1beta1.AddToScheme)
 
-	err = snapshotv1.AddToScheme(scheme.Scheme)
+	err = appsv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
-
-	err = workloads.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
+	model.AddScheme(appsv1.AddToScheme)
 
 	// +kubebuilder:scaffold:rscheme
 
@@ -133,24 +133,25 @@ var _ = BeforeSuite(func() {
 
 	// run reconcile
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
-		Scheme:                scheme.Scheme,
-		MetricsBindAddress:    "0",
-		ClientDisableCacheFor: intctrlutil.GetUncachedObjects(),
+		Scheme:  scheme.Scheme,
+		Metrics: server.Options{BindAddress: "0"},
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: intctrlutil.GetUncachedObjects(),
+			},
+		},
 	})
 	Expect(err).ToNot(HaveOccurred())
 
 	viper.SetDefault("CERT_DIR", "/tmp/k8s-webhook-server/serving-certs")
-	viper.SetDefault(constant.KBToolsImage, "apecloud/kubeblocks-tools:latest")
+	viper.SetDefault(constant.KBToolsImage, "docker.io/apecloud/kubeblocks-tools:latest")
 	viper.SetDefault("PROBE_SERVICE_PORT", 3501)
 	viper.SetDefault("PROBE_SERVICE_LOG_LEVEL", "info")
+	viper.SetDefault("CM_NAMESPACE", "default")
+	viper.SetDefault("HOST_PORT_CM_NAME", "kubeblocks-host-ports")
 	viper.SetDefault(constant.EnableRBACManager, true)
 
-	clusterRecorder = k8sManager.GetEventRecorderFor("db-cluster-controller")
-	err = (&ClusterReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: clusterRecorder,
-	}).SetupWithManager(k8sManager)
+	err = intctrlutil.InitHostPortManager(k8sClient)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ClusterDefinitionReconciler{
@@ -160,54 +161,31 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&ClusterVersionReconciler{
+	err = (&ShardingDefinitionReconciler{
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("cluster-version-controller"),
+		Recorder: k8sManager.GetEventRecorderFor("sharding-definition-controller"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&OpsRequestReconciler{
+	err = (&ComponentDefinitionReconciler{
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("ops-request-controller"),
+		Recorder: k8sManager.GetEventRecorderFor("component-definition-controller"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&k8score.EventReconciler{
+	err = (&ComponentVersionReconciler{
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("event-controller"),
+		Recorder: k8sManager.GetEventRecorderFor("component-version-controller"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	// add SystemAccountReconciler
-	systemAccountReconciler = &SystemAccountReconciler{
+	err = (&SidecarDefinitionReconciler{
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("system-account-controller"),
-	}
-	err = systemAccountReconciler.SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&configuration.ConfigConstraintReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("configuration-template-controller"),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&configuration.ConfigurationReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("configuration-controller"),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&ComponentClassReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("class-controller"),
+		Recorder: k8sManager.GetEventRecorderFor("sidecar-definition-controller"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -219,8 +197,6 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	testCtx = testutil.NewDefaultTestContext(ctx, k8sClient, testEnv)
-
-	appsv1alpha1.RegisterWebhookManager(k8sManager)
 
 	go func() {
 		defer GinkgoRecover()
