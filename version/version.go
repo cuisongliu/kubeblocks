@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2025 ApeCloud Co., Ltd
 
 This file is part of KubeBlocks project
 
@@ -19,10 +19,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 package version
 
-import "github.com/hashicorp/go-version"
-
 // Version is the string that contains version
-var Version = "edge"
+var Version = "dev"
 
 // BuildDate is the string of binary build date
 var BuildDate string
@@ -31,24 +29,4 @@ var BuildDate string
 var GitCommit string
 
 // GitVersion is the string of git version tag
-var GitVersion string
-
-// K3dVersion is k3d release version
-var K3dVersion = "5.4.4"
-
-// K3sImageTag is k3s image tag
-var K3sImageTag = "v1.23.8-k3s1"
-
-// MinimumDockerVersion is Minimum Docker version required by KubeBlocks
-var MinimumDockerVersion, _ = version.NewVersion("20.10.5")
-
-// DefaultKubeBlocksVersion is the default KubeBlocks version that installed by kbcli
-var DefaultKubeBlocksVersion string
-
-// GetVersion returns the version for cli, either got from "git describe --tags" or "dev" when doing simple go build
-func GetVersion() string {
-	if len(Version) == 0 {
-		return "v1-dev"
-	}
-	return Version
-}
+var GitVersion = "unknown"

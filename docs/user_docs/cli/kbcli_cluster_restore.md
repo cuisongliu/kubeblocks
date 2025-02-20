@@ -13,19 +13,21 @@ kbcli cluster restore [flags]
 ```
   # restore a new cluster from a backup
   kbcli cluster restore new-cluster-name --backup backup-name
-  
-  # restore a new cluster from point in time
-  kbcli cluster restore new-cluster-name --restore-to-time "Apr 13,2023 18:40:35 UTC+0800" --source-cluster mycluster
-  kbcli cluster restore new-cluster-name --restore-to-time "2023-04-13T18:40:35+08:00" --source-cluster mycluster
 ```
 
 ### Options
 
 ```
-      --backup string            Backup name
-  -h, --help                     help for restore
-      --restore-to-time string   point in time recovery(PITR)
-      --source-cluster string    source cluster name
+      --backup string                   Backup name
+      --dry-run string[="unchanged"]    Must be "client", or "server". If with client strategy, only print the object that would be sent, and no data is actually sent. If with server strategy, submit the server-side request, but no data is persistent. (default "none")
+      --edit                            Edit the API resource before creating
+  -h, --help                            help for restore
+  -o, --output format                   Prints the output in the specified format. Allowed values: JSON and YAML (default yaml)
+      --restore-after-cluster-running   do the postReady phase when the cluster is Running rather than the component is Running.
+      --restore-key string              specify the key to restore in kv database, support multiple keys split by comma with wildcard pattern matching
+      --restore-key-ignore-errors       whether or not to ignore errors when restore kv database by keys
+      --restore-to-time string          point in time recovery(PITR)
+      --volume-restore-policy string    the volume claim restore policy, supported values: [Serial, Parallel] (default "Parallel")
 ```
 
 ### Options inherited from parent commands

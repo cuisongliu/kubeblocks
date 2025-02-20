@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2025 ApeCloud Co., Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -135,9 +135,9 @@ func PlaygroundDestroy() {
 }
 
 func checkPlaygroundCluster() {
-	commond := "kubectl get cluster | awk '{print $1}' | sed 1d"
-	log.Println(commond)
-	clusterName := e2eutil.ExecCommand(commond)
+	command := "kubectl get cluster | awk '{print $1}' | sed 1d"
+	log.Println(command)
+	clusterName := e2eutil.ExecCommand(command)
 	Eventually(func(g Gomega) {
 		e2eutil.WaitTime(100000)
 		podStatusResult := e2eutil.CheckPodStatus(clusterName, "default")

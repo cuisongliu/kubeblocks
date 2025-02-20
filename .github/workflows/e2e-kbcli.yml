@@ -12,7 +12,10 @@ on:
         required: false
         default: ''
       TEST_TYPE:
-        description: 'test type (e.g. mysql|postgres|redis|mongo|kafka|pulsar|weaviate|qdrant|smarte|scale|greptimedb|nebula|risingwave|starrocks|oceanbase|foxlake|oracle-mysql|asmysql|openldap)'
+        description: 'test type (e.g.  apecloud-mysql|postgresql|redis|mongodb|kafka|asmysql|elasticsearch|zookeeper|
+        rabbitmq|pulsar|mysqlscale|weaviate|qdrant|smartengine|greptimedb|nebula|risingwave|starrocks|etcd|oceanbase|
+        orioledb|vanilla-pg|polardbx|opensearch|tdengine|milvus|clickhouse|mariadb|tidb|influxdb|doris|mogdb|
+        apecloud-postgresql|yashandb|redis-cluster|minio|orchestrator)'
         required: false
         default: ''
       CLOUD_PROVIDER:
@@ -22,17 +25,23 @@ on:
         type: choice
         options:
           - eks
+          - vke
           - gke
+          - aks
+          - aks-cn
       CLUSTER_VERSION:
-        description: 'k8s cluster version (e.g. 1.25)'
+        description: 'k8s cluster version'
         required: false
-        default: '1.25'
+        default: "1.30"
         type: choice
         options:
-          - 1.27
-          - 1.26
-          - 1.25
-          - 1.24
+          - "1.30"
+          - "1.29"
+          - "1.28"
+          - "1.27"
+          - "1.26"
+          - "1.25"
+          - "1.24"
       INSTANCE_TYPE:
         description: 'node instance types (e.g. amd64/arm64)'
         required: false
@@ -50,7 +59,7 @@ on:
         required: false
         default: ''
 
-run-name: kbcli:${{ inputs.PRE_VERSION }} to ${{ inputs.VERSION }} ${{ inputs.CLOUD_PROVIDER }}:${{ inputs.CLUSTER_VERSION }}:${{ inputs.INSTANCE_TYPE }}
+run-name: kbcli:${{ inputs.PRE_VERSION }} to ${{ inputs.VERSION }} ${{ inputs.CLOUD_PROVIDER }}:${{ inputs.CLUSTER_VERSION }}:${{ inputs.INSTANCE_TYPE }} ${{ inputs.TEST_TYPE }}
 
 env:
   GH_TOKEN: ${{ github.token }}
@@ -62,7 +71,7 @@ jobs:
       release-version: ${{ steps.get_release_version.outputs.release-version }}
       cluster-region: ${{ steps.get_release_version.outputs.cluster-region }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: check release version
         id: get_release_version
         run: |
@@ -78,9 +87,15 @@ jobs:
           
           CLUSTER_REGION=""
           if [[ "${{ inputs.CLOUD_PROVIDER }}" == 'eks' && -z "$CLUSTER_REGION" ]]; then
-              CLUSTER_REGION="${{ vars.REGION_AWK_EKS }}"
+              CLUSTER_REGION="${{ vars.REGION_AWS_EKS }}"
+          elif [[ "${{ inputs.CLOUD_PROVIDER }}" == 'vke' && -z "$CLUSTER_REGION" ]]; then
+              CLUSTER_REGION="${{ vars.REGION_VOLCENGINE_VKE }}"
           elif [[ "${{ inputs.CLOUD_PROVIDER }}" == 'gke' && -z "$CLUSTER_REGION" ]]; then
-              CLUSTER_REGION="${{ vars.REGION_GCP_GEK }}"
+              CLUSTER_REGION="${{ vars.REGION_GCP_GKE }}"
+          elif [[ "${{ inputs.CLOUD_PROVIDER }}" == 'aks' && -z "$CLUSTER_REGION" ]]; then
+              CLUSTER_REGION="${{ vars.REGION_AZURE_AKS }}"
+          elif [[ "${{ inputs.CLOUD_PROVIDER }}" == 'aks-cn' && -z "$CLUSTER_REGION" ]]; then
+              CLUSTER_REGION="${{ vars.REGION_AZURE_CN_AKS }}"
           fi
           echo cluster-region=$CLUSTER_REGION >> $GITHUB_OUTPUT
 
@@ -96,7 +111,6 @@ jobs:
       INSTANCE_TYPE: "${{ inputs.INSTANCE_TYPE }}"
       REGION: "${{ needs.check.outputs.cluster-region }}"
       BRANCH_NAME: "${{ inputs.BRANCH_NAME }}"
-      APECD_REF: "main"
       ARGS: "${{ inputs.ARGS }}"
       TEST_TYPE: "${{ inputs.TEST_TYPE }}"
     secrets: inherit

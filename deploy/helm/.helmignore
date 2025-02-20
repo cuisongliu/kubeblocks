@@ -21,6 +21,12 @@
 .idea/
 *.tmproj
 .vscode/
+
 # Dependent sub charts
 depend-charts/
 
+# dashboards
+dashboards/
+
+# crds, need to separate installation
+crds/

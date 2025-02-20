@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2022-2023 ApeCloud Co., Ltd
+Copyright (C) 2022-2025 ApeCloud Co., Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,10 +18,6 @@ limitations under the License.
 
 package v1alpha1
 
-// BackupPolicyTemplateListerExpansion allows custom methods to be added to
-// BackupPolicyTemplateLister.
-type BackupPolicyTemplateListerExpansion interface{}
-
 // ClusterListerExpansion allows custom methods to be added to
 // ClusterLister.
 type ClusterListerExpansion interface{}
@@ -34,29 +30,25 @@ type ClusterNamespaceListerExpansion interface{}
 // ClusterDefinitionLister.
 type ClusterDefinitionListerExpansion interface{}
 
-// ClusterVersionListerExpansion allows custom methods to be added to
-// ClusterVersionLister.
-type ClusterVersionListerExpansion interface{}
+// ComponentListerExpansion allows custom methods to be added to
+// ComponentLister.
+type ComponentListerExpansion interface{}
 
-// ComponentClassDefinitionListerExpansion allows custom methods to be added to
-// ComponentClassDefinitionLister.
-type ComponentClassDefinitionListerExpansion interface{}
+// ComponentNamespaceListerExpansion allows custom methods to be added to
+// ComponentNamespaceLister.
+type ComponentNamespaceListerExpansion interface{}
 
-// ComponentResourceConstraintListerExpansion allows custom methods to be added to
-// ComponentResourceConstraintLister.
-type ComponentResourceConstraintListerExpansion interface{}
+// ComponentDefinitionListerExpansion allows custom methods to be added to
+// ComponentDefinitionLister.
+type ComponentDefinitionListerExpansion interface{}
+
+// ComponentVersionListerExpansion allows custom methods to be added to
+// ComponentVersionLister.
+type ComponentVersionListerExpansion interface{}
 
 // ConfigConstraintListerExpansion allows custom methods to be added to
 // ConfigConstraintLister.
 type ConfigConstraintListerExpansion interface{}
-
-// OpsRequestListerExpansion allows custom methods to be added to
-// OpsRequestLister.
-type OpsRequestListerExpansion interface{}
-
-// OpsRequestNamespaceListerExpansion allows custom methods to be added to
-// OpsRequestNamespaceLister.
-type OpsRequestNamespaceListerExpansion interface{}
 
 // ServiceDescriptorListerExpansion allows custom methods to be added to
 // ServiceDescriptorLister.
